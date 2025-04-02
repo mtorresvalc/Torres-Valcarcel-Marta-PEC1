@@ -1,0 +1,238 @@
+---
+title: "Análisis de datos ómicos (M0-157). Primera prueba de evaluación continua. Marta Torres Valcárcel"
+date: "2025-04-02"
+output: word_document
+bibliography: bibliografia_rmd.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### 1. Seleccionad y descargad un dataset de metabolómica, que podéis obtener de metabolomicsWorkbench o de este repositorio de GitHub. 
+
+Lo primero que se hace es cargar los datos, los cuales se ha descargado desde la terminar clonando el repositorio donde se encuentran, concretamente se han descargado los datos 2024-Cachexia.
+
+### 2. Cread un objeto de clase SummarizedExperiment que contenga los datos y los metadatos (información acerca del dataset, sus filas y columnas). La clase SummarizedExperiment es una extensión de ExpressionSet, utilizada por muchas aplicaciones y bases de datos (como es el caso de metabolomicsWorkbench). ¿Cuáles son sus principales diferencias con la clase ExpressionSet? (@1)
+
+```{r}
+#Se definen las rutas de los archivos descargados mediante la terminal, concretamente los ficheros de los values y metadata
+data_path <- "C:/Users/tester/Desktop/Torres-Valcárcel-Marta-PEC1/metaboData/Datasets/2024-Cachexia/human_cachexia.csv"
+
+#Definición de los datos:
+data_values <- read.csv(data_path)
+
+head(data_values) #se muestra por pantalla.
+```
+
+```{r}
+write.table(data_values, "data_values.txt", sep = ",", row.names = FALSE, quote = FALSE) #pasar a fichero .txt.
+```
+
+
+
+```{r}
+library(dplyr)
+
+valores_posibles <- sapply(data_values, function(x) unique(x)) #lista con nombres de las columnas y los posibles valores que puede tomar 
+
+#creación de una función que cree un data frame con los metadatos.
+metadata <- data.frame(
+  Variable = names(valores_posibles),  #columnas
+  Valores = sapply(valores_posibles, function(x) paste(unique(x), collapse = ", "))  # Valores posibles
+)
+
+head(metadata) #ver el resultado
+```
+
+```{r}
+write.table(metadata, "metadata.txt", sep = ",", row.names = FALSE, quote = FALSE) #pasar a archivo .txt
+```
+
+
+```{r}
+#compruebo las dimensiones de ambas, aspecto que hay que tener en cuenta para hacer un SummarizedExperiment
+dim(data_values)
+dim(metadata)
+```
+
+Una vez se tienen los datos, se debe tener en cuenta que para la creación de un objeto de clase SummarizedExperiment se debe instalar dicho paquete, perteneciente a Bioconductor, posteriormente se procede a realizar lo que se pide.
+
+
+
+```{r}
+library(SummarizedExperiment) #Cargo la librería necesaria
+
+#SummarizedExperiment contiene una lista en la que se almacena  el recuento de los values convertidos en matriz (porque es el formato esperado para Bioconductor) y colData es los datos de las columnas
+
+se <- SummarizedExperiment(assays = list(counts = as.matrix(data_values)), 
+                           colData = metadata)
+
+se #se visualiza por pantalla
+```
+
+```{r}
+save(se, file = "SummarizedExperiment.Rda") #guardo el objeto SummarizedExperiment en un archivo .Rda
+```
+
+
+ExpressionSet se usa generalmente para experimentos basados en matrices, donde las filas son características, y SummarizedExperiment se usa generalmente para experimentos basados en secuenciación, donde las filas son GenomicRanges. 
+
+ExpressionSet se usa para microarrays mientras que SummarizedExperiment es usado para RNA-seq. (@2) (@3)
+
+
+### 3. Llevad a cabo un análisis exploratorio que os proporcione una visión general del dataset en la línea de lo que hemos visto en las actividades de este. (@4)
+
+```{r}
+str(data_values)
+```
+
+Se presentan 65 columnas de las cuales, 2 son identificativas: el id del paciente y el grupo al que pertenecen (control o enfermo). El resto se trata de metabolitos cuyos valores son numéricos
+
+
+```{r}
+summary(data_values)
+```
+Se presenta un resumen estadístico de cada metabolito.
+
+Separo los pacientes del grupo control de los enfermos para el análisis posterior.
+
+```{r}
+control <- data_values[data_values$Muscle.loss == "control", ]
+cachexia <- data_values[data_values$Muscle.loss == "cachexic", ]
+cat("Número de pacientes en Control:", nrow(control), "\n")
+cat("Número de pacientes en Cachexia:", nrow(cachexia), "\n")
+```
+Comprobación de la normalidad de los datos mediante un Shapiro-Wilk. Dicho test se hace por cada columna.
+
+```{r}
+shapiro_results_control <- lapply(control[, 3:65], shapiro.test) #Grupo control
+
+shapiro_results_cachexia <- lapply(cachexia[, 3:65], shapiro.test) #Grupo cachexia
+
+is_normal <- function(p_value) { #Función para clasificar si son normales o no
+  if (p_value >= 0.05) {
+    return("Sí")  #Datos normales
+  } else {
+    return("No")  #Datos no normales
+  }
+}
+
+#Aplico la función:
+normality_control <- sapply(shapiro_results_control, function(x) is_normal(x$p.value))
+normality_cachexia <- sapply(shapiro_results_cachexia, function(x) is_normal(x$p.value))
+
+
+cat("Normalidad en el grupo Control:\n") #titulo del grupo control
+print(normality_control) #sao por pantalla grupo control
+
+cat("\nNormalidad en el grupo Cachexia:\n") #titulo del grupo Cachexia
+print(normality_cachexia) #saco por pantalla grupo Cachexia
+```
+
+Ya que no siguen una distribución normal, y teniendo en cuenta que son indepenendientes, se realiza una prueba de Mann-Whitney-Wilcoxon para para determinar si hay diferencias significativas entre los dos grupos para cada metabolito. 
+
+```{r}
+wilcox_resultados <- sapply(3:65, function(i) { #aplicación de Mann-Whitney-Wilcoxon a cada metabolito
+  wilcox.test(data_values[, i] ~ data_values$Muscle.loss)$p.value
+})
+
+wilcox_resultados_df <- data.frame( #almacenar los resultados en un data frame
+  Metabolito = colnames(data_values)[3:65],
+  p_value = wilcox_resultados
+)
+
+wilcox_resultados_df$Significativo <- ifelse(wilcox_resultados_df$p_value < 0.05, "Sí", "No") #se añade una columna que defina si es sifnificativo o no dependeindo del valor obtenido.
+
+# Mostrar los resultados
+print(wilcox_resultados_df)
+```
+
+Aquellos metabolitos que tiene un p-value muy bajo (p < 0.05) presentan diferencia significativa entre el grupo control y el grupo Cachexia. Es el caso de todos exceptuando: Isoleucine, Pantothenate, Tartrate, Hypoxanthine, Aminoisobutyrate, Methylguanidine, Uracil y	Acetone,
+
+Sin embargo, en aquellos que tiene un p-value alto (p > 0.05), no hay evidencia suficiente para afirmar que hay una diferencia en los niveles de ese metabolito entre los grupos. Es el caso de Isoleucine, Pantothenate, Tartrate, Hypoxanthine, Aminoisobutyrate, Methylguanidine, Uracil y	Acetone.
+
+A continaución se presenta de forma visual la comparación de los resultados obtenidos de cada metabolito según sea el grupo (control o enfermo)
+
+```{r}
+library(ggplot2)
+
+metabolitos <- colnames(data_values)[3:65] #se definen las columnas que almacenan los datos de los metabolitos
+
+
+library(reshape2)
+data_long <- melt(data_values, id.vars = c("Patient.ID", "Muscle.loss"), measure.vars = metabolitos) #trasnformación de los datos a formato largo
+
+metabolitos_bloques <- split(metabolitos, ceiling(seq_along(metabolitos)/8)) #se quiere que los metabolitos estén de 8 en 8.
+
+for (i in 1:length(metabolitos_bloques)) { #bucle para hacer los boxplots
+  metabolitos_bloque <- metabolitos_bloques[[i]]
+  data_long_bloque <- melt(data_values, id.vars = c("Patient.ID", "Muscle.loss"), measure.vars = metabolitos_bloque)
+  
+  p <- ggplot(data_long_bloque, aes(x = Muscle.loss, y = value, fill = Muscle.loss)) + geom_boxplot() + facet_wrap(~variable, scales = "free_y", ncol = 4) + labs(title = paste("Comparación de metabolitos entre Control y Cachexia")) + theme_minimal()
+  
+  
+  print(p) #mostrar el gráfico
+}
+
+```
+Se puede concluir que en la mayoría los valores de los metabolitos se enceuntran por encima de los valores de dichos metabolitos en los grupos controles, lo cual podría suguierir que hay cierta relación entre la enfermdad y dichos los metabolitos presentandos.
+
+Destacar que algunos de los metabolitos cuyos valores, teniendo el paciente Cachexia, se encuentran muy por encima de los del grupo control son Anhidro.beta.D.gluc, Hidroxisobutarato, Alanina, Asparagina, Betaína, entre otros.
+
+Por último se decide hacer un cluster para encontrar grupos de metabolitos con patrones similares.
+Se plantean dos tipos de cluster, por un lado, basado en los perfiles metabólicos para ver si hay subgrupos de pacientes con características similares. Por otro lado, se realiza una agrupación de los metabolitos según su comportamiento en los pacientes.
+
+
+```{r}
+metabolitos_data <- data_values[, 3:65] #selección solo metabolitos
+
+metabolitos_data_normalizados <- scale(metabolitos_data) #normalizar los datos
+
+dist_matrix_pacientes <- dist(metabolitos_data_normalizados) # matriz de distancias entre pacientes
+
+hc_pacientes <- hclust(dist_matrix_pacientes, method = "complete") # Clustering jerárquico de pacientes
+
+par(mar = c(0, 2, 1, 0)) #ajustar
+
+plot(hc_pacientes, labels = data_values$Group, main = "Dendrograma de Pacientes", cex = 0.6) #grafico
+
+```
+
+Aquellos pacientes que se encuentran unidos en los valores más bajos son aquellos más similares, en el caso de los pacientes 4 y el 7 sucede todo al contrario, cuentan con perfiles muy diferentes. Ambos se tratan de pacientes enfermos por lo que este aspecto, junto a que el cluster no ha separado los pacientres en dos grupos (enfermos y control), hace que se llegue a la conclusion de que los metabolitos podrían no ser buenos para diferenciar pacientes.
+
+
+
+```{r}
+metabolitos_data_t <- t(metabolitos_data) #trasposición de los datos
+
+metabolitos_data_t_normalizados <- scale(metabolitos_data_t) #normalización de los datos
+
+dist_matrix_metabolitos <- dist(metabolitos_data_t_normalizados) #matriz de distancias
+
+hc_metabolitos <- hclust(dist_matrix_metabolitos, method = "complete") #clustering de metabolitos
+
+par(mar = c(1, 1, 1, 1)) #ajustar
+
+plot(hc_metabolitos, main = "Dendrograma de Metabolitos", cex = 0.5) #dendograma
+
+```
+Aquellos metabolitos que se están separados pueden usarse para la idenficación de biomarcadores clave en el Cachexia, como es el caso de la creatinina, el citraro o el hipurato.
+
+El resto parecen estar más agrupados por lo que se puede conluir que tienen una función metabólica similar.
+
+
+### 4. Elaborad un informe que describa el proceso que habéis realizado, incluyendo la justificación de la selección del dataset,su incorporación al summarizedExperiment, el análisis exploratorio de los datos y la interpretación de los resultados desde el punto de vista biológico. La extensión máxima de este informe (sin tener en cuenta los Anexos) debe ser de 10 páginas, en formato PDF. 
+
+
+
+### 5. Cread un repositorio de GitHub1 que contenga: 
+## • el informe, 
+## • el objeto de clase SummarizedExperiment que contenga los datos y los metadatos en formato binario (.Rda), 
+## • el código R para la exploración de los datos debidamente comentado (el control de versiones del mismo debe realizarse con Git) 
+## • los datos en formato texto y 
+## • los metadatos acompañados de una breve descripción en un archivo markdown.
+
+
+
