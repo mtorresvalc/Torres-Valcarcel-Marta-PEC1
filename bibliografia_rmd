@@ -1,0 +1,32 @@
+
+@misc{1,
+  author    = {no, author},
+  title     = {},
+  year      = {2025},
+  url       = {https://uclouvain-cbio.github.io/bioinfo-training-02-rnaseq/sec-se.html},
+  note      = {Último acceso: 2 de abril de 2025},
+}
+
+@misc{2,
+  author    = {no, author},
+  title     = {},
+  year      = {2025},
+  url       = {https://www.sthda.com/english/wiki/expressionset-and-summarizedexperiment},
+  note      = {Último acceso: 2 de abril de 2025},
+}
+
+@misc{3,
+  author    = {no, author},
+  title     = {},
+  year      = {2025},
+  url       = {file:///C:/Users/tester/Downloads/tami13.pdf},
+  note      = {Último acceso: 2 de abril de 2025},
+}
+
+@misc{4,
+  author    = {no, author},
+  title     = {},
+  year      = {2025},
+  url       = {https://rpubs.com/dcalderon/1068234},
+  note      = {Último acceso: 2 de abril de 2025},
+}
